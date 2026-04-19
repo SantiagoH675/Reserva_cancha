@@ -292,16 +292,17 @@ EXEC SP_ManejarPago
     @idReserva = 0, @fechaPago = '2026-01-01', 
     @valor = 0, @metodoPago = '', @estadoPago = '';
 
--------------------------------------------------------
--------------------------------------------------------
---Consultas desde Cero (INNER JOIN, GROUP BY y HAVING)
-SELECT 
-    u.nombres, 
-    COUNT(r.idReserva) AS Cantidad_Reservas
+SELECT u.nombres,c.nombre,h.fecha,r.estado
+    FROM Reserva r
+    INNER JOIN [Usuario Deportivo] u ON r.idUsuario = u.idUsuario
+    INNER JOIN Horario h ON r.idHorario = h.idHorario
+    INNER JOIN Cancha c ON h.idCancha = c.idCancha;
+
+SELECT u.nombres,COUNT(r.idReserva) AS Total
 FROM [Usuario Deportivo] u
 INNER JOIN Reserva r ON u.idUsuario = r.idUsuario
 GROUP BY u.nombres
-HAVING COUNT(r.idReserva) > 1;
+HAVING COUNT (r.IdReserva) >0;
 
 
 --Buscar un Elemento (Con Mensaje)
@@ -312,7 +313,7 @@ BEGIN
     -- Declaramos una variable para contar si el usuario existe
     DECLARE @Existe INT;
     
-    -- Contamos cuántos usuarios tienen ese documento (Debería ser 1 o 0)
+    -- Contamos cuántos usuarios tienen ese documento 
     SELECT @Existe = COUNT(*) FROM [Usuario Deportivo] WHERE documento = @Documento;
 
     -- Si es mayor a 0, significa que sí existe
@@ -332,44 +333,38 @@ BEGIN
 END;
 GO
 
---Dos Funciones
---Función 1: Sumar el dinero que ha pagado un usuario.
-CREATE FUNCTION FN_DineroPagado (@idUsuario INT)
-RETURNS DECIMAL(10,2) -- Devuelve dinero (decimal)
-AS
-BEGIN
-    DECLARE @Total DECIMAL(10,2);
-    
-    -- Unimos las tablas Pago y Reserva para sumar la plata de ese usuario
-    SELECT @Total = SUM(p.valor)
-    FROM Pago p
-    INNER JOIN Reserva r ON p.idReserva = r.idReserva
-    WHERE r.idUsuario = @idUsuario;
-    
-    -- Si no ha pagado nada, le ponemos un cero para que no salga vacío (NULL)
-    IF @Total IS NULL 
-        SET @Total = 0;
-        
-    RETURN @Total;
-END;
-GO
+CREATE FUNCTION fn_Reserva_Por_Usuario(@idUsuario INT)
+RETURNS TABLE
+RETURN
+(
+    SELECT r.idReserva,u.nombres,u.apellidos,c.nombre AS NombreCancha,h.fecha,h.horainicio,h.horafin,r.estado
+    FROM Reserva r
+    INNER JOIN [Usuario Deportivo] u ON r.idUsuario = u.idUsuario
+    INNER JOIN Horario h ON r. idHorario = h.idHorario
+    INNER JOIN Cancha c ON h.idCancha = c.idCancha
+    WHERE u.idUsuario =@idUsuario
+    );
+SELECT * FROM fn_Reserva_Por_Usuario(1);
 
---Función 2: Contar cuántos horarios tiene asignados una cancha.
-CREATE FUNCTION FN_ContarHorariosCancha (@idCancha INT)
-RETURNS INT -- Devuelve un número entero
-AS
-BEGIN
-    DECLARE @Cantidad INT;
-    
-    -- Unimos Cancha y Horario para contar
-    SELECT @Cantidad = COUNT(h.idHorario)
-    FROM Cancha c
-    INNER JOIN Horario h ON c.idCancha = h.idCancha
-    WHERE c.idCancha = @idCancha;
-    
-    RETURN @Cantidad;
-END;
+CREATE FUNCTION fn_TotalPagadoUsuario(@idUsuario INT)
+RETURNS TABLE
+RETURN
+(
+    SELECT u.idUsuario, u.nombres, u.apellidos,SUM(p.valor) AS Totalpagado
+    FROM [Usuario Deportivo] u
+    INNER JOIN Reserva r ON u.idUsuario = r.idUsuario
+    INNER JOIN Pago p ON r.idReserva = p.idReserva
+    WHERE u.idUsuario = @idUsuario
+    AND p.estadoPago = 'Pagado'
+    GROUP BY 
+    u.idUsuario,
+    u.nombres,
+    u.apellidos
+);
 GO
+SELECT * FROM fn_TotalPagadoUsuario(1);
+
+
 
 /* ============================================================================
    PUNTO 6: TRIGGER PARA ACTUALIZAR DISPONIBILIDAD DEL HORARIO
@@ -398,4 +393,7 @@ BEGIN
     PRINT 'Trigger ejecutado: El horario ha sido marcado como NO disponible.';
 END;
 GO
+
+
+    
 
